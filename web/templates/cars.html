@@ -1,0 +1,463 @@
+{% extends "base.html" %}
+
+{% block title %}Автопарк - Rental CRM{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3 mb-0">
+            <i class="bi bi-car-front"></i>
+            Управление автопарком
+        </h1>
+        <p class="text-muted">Список всех машин в автопарке</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCarModal">
+            <i class="bi bi-plus-lg"></i>
+            Добавить машину
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <select class="form-select" id="statusFilter">
+            <option value="">Все статусы</option>
+            <option value="available">Доступна</option>
+            <option value="rented">Сдана в аренду</option>
+            <option value="maintenance">На обслуживании</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <input type="text" class="form-control" id="searchFilter" placeholder="Поиск по марке, модели, номеру...">
+    </div>
+</div>
+
+<!-- Cars Table -->
+<div class="card">
+    <div class="card-body">
+        <div id="cars-table-container">
+            <!-- Table will be populated by JavaScript -->
+        </div>
+    </div>
+</div>
+
+<!-- Add Car Modal -->
+<div class="modal fade" id="addCarModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-lg"></i>
+                    Добавить машину
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addCarForm">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="brand" class="form-label">Марка*</label>
+                                <input type="text" class="form-control" name="brand" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="model" class="form-label">Модель*</label>
+                                <input type="text" class="form-control" name="model" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vin" class="form-label">VIN номер*</label>
+                                <input type="text" class="form-control" name="vin" maxlength="17" required>
+                                <div class="form-text">17 символов</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="license_plate" class="form-label">Госномер*</label>
+                                <input type="text" class="form-control" name="license_plate" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="daily_rate" class="form-label">Стоимость в день (₾)*</label>
+                        <input type="number" class="form-control" name="daily_rate" step="0.01" min="0" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Добавить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Car Details Modal -->
+<div class="modal fade" id="carDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-car-front"></i>
+                    Детали машины
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="carDetailsContent">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let carsData = [];
+let filteredCars = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Set active nav item
+    document.getElementById('nav-cars').classList.add('active');
+    
+    loadCars();
+    
+    // Setup filters
+    document.getElementById('statusFilter').addEventListener('change', filterCars);
+    document.getElementById('searchFilter').addEventListener('input', RentalCRM.debounce(filterCars, 300));
+    
+    // Setup form
+    document.getElementById('addCarForm').addEventListener('submit', handleAddCar);
+});
+
+async function loadCars() {
+    try {
+        RentalCRM.showLoading();
+        
+        const response = await RentalCRM.apiRequest('/api/cars/');
+        
+        if (response.ok) {
+            carsData = await response.json();
+            filteredCars = [...carsData];
+            renderCarsTable();
+        } else {
+            throw new Error('Failed to load cars');
+        }
+        
+        RentalCRM.hideLoading();
+    } catch (error) {
+        console.error('Error loading cars:', error);
+        RentalCRM.showError('Ошибка загрузки списка машин');
+        RentalCRM.hideLoading();
+    }
+}
+
+function filterCars() {
+    const statusFilter = document.getElementById('statusFilter').value;
+    const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
+    
+    filteredCars = carsData.filter(car => {
+        const matchesStatus = !statusFilter || car.status === statusFilter;
+        const matchesSearch = !searchFilter || 
+            car.brand.toLowerCase().includes(searchFilter) ||
+            car.model.toLowerCase().includes(searchFilter) ||
+            car.license_plate.toLowerCase().includes(searchFilter) ||
+            car.vin.toLowerCase().includes(searchFilter);
+        
+        return matchesStatus && matchesSearch;
+    });
+    
+    renderCarsTable();
+}
+
+function renderCarsTable() {
+    const container = document.getElementById('cars-table-container');
+    
+    if (filteredCars.length === 0) {
+        container.innerHTML = RentalCRM.createEmptyState('Машины не найдены', 'bi-car-front');
+        return;
+    }
+    
+    const table = document.createElement('table');
+    table.className = 'table table-striped table-hover';
+    
+    // Table header
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Марка/Модель</th>
+                <th>Номер</th>
+                <th>VIN</th>
+                <th>Тариф</th>
+                <th>Статус</th>
+                <th>Прибыль</th>
+                <th>Аренды</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${filteredCars.map(car => `
+                <tr>
+                    <td>
+                        <strong>${car.brand} ${car.model}</strong>
+                    </td>
+                    <td><code>${car.license_plate}</code></td>
+                    <td><small class="text-muted">${car.vin}</small></td>
+                    <td>${RentalCRM.formatCurrency(car.daily_rate)}/день</td>
+                    <td>${RentalCRM.getStatusBadge(car.status)}</td>
+                    <td>
+                        <span class="${car.net_profit >= 0 ? 'text-success' : 'text-danger'}">
+                            ${RentalCRM.formatCurrency(car.net_profit)}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge bg-info">${car.rental_count}</span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showCarDetails(${car.id})">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-info" onclick="showCarHistory(${car.id})">
+                            <i class="bi bi-clock-history"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('')}
+        </tbody>
+    `;
+    
+    container.innerHTML = '';
+    container.appendChild(table);
+}
+
+async function handleAddCar(event) {
+    event.preventDefault();
+    
+    try {
+        const formData = RentalCRM.getFormData('addCarForm');
+        
+        // Validation
+        RentalCRM.validateRequired(formData.brand, 'Марка');
+        RentalCRM.validateRequired(formData.model, 'Модель');
+        RentalCRM.validateRequired(formData.vin, 'VIN номер');
+        RentalCRM.validateRequired(formData.license_plate, 'Госномер');
+        RentalCRM.validateNumber(formData.daily_rate, 'Стоимость в день', 0.01);
+        
+        if (formData.vin.length !== 17) {
+            throw new Error('VIN номер должен содержать ровно 17 символов');
+        }
+        
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Добавление...';
+        submitBtn.disabled = true;
+        
+        const response = await RentalCRM.apiRequest('/api/cars/', {
+            method: 'POST',
+            body: JSON.stringify({
+                brand: formData.brand,
+                model: formData.model,
+                vin: formData.vin.toUpperCase(),
+                license_plate: formData.license_plate.toUpperCase(),
+                daily_rate: parseFloat(formData.daily_rate)
+            })
+        });
+        
+        if (response.ok) {
+            const newCar = await response.json();
+            carsData.unshift(newCar);
+            filterCars();
+            
+            RentalCRM.clearForm('addCarForm');
+            RentalCRM.hideModal('addCarModal');
+            RentalCRM.showSuccessToast('Машина успешно добавлена');
+        } else {
+            const error = await response.json();
+            throw new Error(error.detail || 'Ошибка при добавлении машины');
+        }
+        
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+        
+    } catch (error) {
+        console.error('Error adding car:', error);
+        RentalCRM.showErrorToast(error.message);
+        
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        submitBtn.innerHTML = 'Добавить';
+        submitBtn.disabled = false;
+    }
+}
+
+async function showCarDetails(carId) {
+    try {
+        const response = await RentalCRM.apiRequest(`/api/cars/${carId}`);
+        
+        if (response.ok) {
+            const car = await response.json();
+            
+            const content = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Основная информация</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>Марка:</strong></td>
+                                <td>${car.brand}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Модель:</strong></td>
+                                <td>${car.model}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Госномер:</strong></td>
+                                <td><code>${car.license_plate}</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>VIN:</strong></td>
+                                <td><small>${car.vin}</small></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Тариф:</strong></td>
+                                <td>${RentalCRM.formatCurrency(car.daily_rate)}/день</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Статус:</strong></td>
+                                <td>${RentalCRM.getStatusBadge(car.status)}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Финансовая статистика</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>Общий доход:</strong></td>
+                                <td class="text-success">${RentalCRM.formatCurrency(car.total_income)}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Общие расходы:</strong></td>
+                                <td class="text-danger">${RentalCRM.formatCurrency(car.total_expenses)}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Чистая прибыль:</strong></td>
+                                <td class="${car.net_profit >= 0 ? 'text-success' : 'text-danger'}">
+                                    <strong>${RentalCRM.formatCurrency(car.net_profit)}</strong>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Количество аренд:</strong></td>
+                                <td><span class="badge bg-info">${car.rental_count}</span></td>
+                            </tr>
+                        </table>
+                        
+                        <div class="mt-3">
+                            <button class="btn btn-outline-primary btn-sm" onclick="showCarHistory(${car.id})">
+                                <i class="bi bi-clock-history"></i>
+                                История аренд
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('carDetailsContent').innerHTML = content;
+            RentalCRM.showModal('carDetailsModal');
+        } else {
+            throw new Error('Failed to load car details');
+        }
+    } catch (error) {
+        console.error('Error loading car details:', error);
+        RentalCRM.showErrorToast('Ошибка загрузки деталей машины');
+    }
+}
+
+async function showCarHistory(carId) {
+    try {
+        const response = await RentalCRM.apiRequest(`/api/cars/${carId}/history`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            let historyHtml = '<h6>История аренд</h6>';
+            
+            if (data.history.length === 0) {
+                historyHtml += '<p class="text-muted">Эта машина ещё не сдавалась в аренду</p>';
+            } else {
+                historyHtml += `
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Арендатор</th>
+                                    <th>Период</th>
+                                    <th>Тип</th>
+                                    <th>Сумма</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.history.map(rental => {
+                                    const status = rental.is_active ? 
+                                        (rental.is_overdue ? 'Просрочено' : 'Активна') : 
+                                        'Завершена';
+                                    const statusClass = rental.is_active ?
+                                        (rental.is_overdue ? 'text-warning' : 'text-success') :
+                                        'text-muted';
+                                        
+                                    return `
+                                        <tr>
+                                            <td>
+                                                <strong>${rental.renter_name}</strong><br>
+                                                <small class="text-muted">${rental.renter_phone}</small>
+                                            </td>
+                                            <td>
+                                                ${RentalCRM.formatDate(rental.start_date)} - 
+                                                ${RentalCRM.formatDate(rental.end_date)}
+                                            </td>
+                                            <td>
+                                                <small>${RentalCRM.getRentalTypeText(rental.rental_type)}</small>
+                                            </td>
+                                            <td>
+                                                ${RentalCRM.formatCurrency(rental.total_amount)}
+                                                <br>
+                                                <small class="text-success">
+                                                    Оплачено: ${RentalCRM.formatCurrency(rental.paid_amount)}
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <span class="${statusClass}">${status}</span>
+                                                ${rental.is_overdue ? `<br><small class="text-warning">+${rental.overdue_days} дн.</small>` : ''}
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('carDetailsContent').innerHTML = historyHtml;
+            RentalCRM.showModal('carDetailsModal');
+        } else {
+            throw new Error('Failed to load car history');
+        }
+    } catch (error) {
+        console.error('Error loading car history:', error);
+        RentalCRM.showErrorToast('Ошибка загрузки истории аренд');
+    }
+}
+</script>
+{% endblock %}
