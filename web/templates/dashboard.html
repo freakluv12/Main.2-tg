@@ -35,4 +35,357 @@
     </div>
     
     <div class="col-md-4">
-        <div class="card h-
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-pie-chart"></i>
+                    Доходы по машинам
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="carsIncomeChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity & Top Cars -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-trophy"></i>
+                    Топ машин по прибыли
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="top-cars-list">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Уведомления
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="notifications">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Set active nav item
+    document.getElementById('nav-dashboard').classList.add('active');
+    
+    loadDashboardData();
+});
+
+let financialChart, carsIncomeChart;
+
+async function loadDashboardData() {
+    try {
+        showLoading();
+        
+        const [dashboardResponse, chartResponse] = await Promise.all([
+            apiRequest('/api/reports/dashboard'),
+            apiRequest('/api/reports/chart-data')
+        ]);
+        
+        const dashboardData = await dashboardResponse.json();
+        const chartData = await chartResponse.json();
+        
+        renderQuickStats(dashboardData);
+        renderFinancialChart(chartData.monthly_chart);
+        renderCarsIncomeChart(chartData.cars_income_chart);
+        renderTopCars(dashboardData.top_cars);
+        renderNotifications(dashboardData);
+        
+        hideLoading();
+    } catch (error) {
+        console.error('Error loading dashboard:', error);
+        showError('Ошибка загрузки данных панели управления');
+        hideLoading();
+    }
+}
+
+function renderQuickStats(data) {
+    const statsContainer = document.getElementById('quick-stats');
+    
+    const stats = [
+        {
+            title: 'Всего машин',
+            value: data.fleet_stats.total_cars,
+            icon: 'bi-car-front',
+            color: 'primary'
+        },
+        {
+            title: 'Доступно',
+            value: data.fleet_stats.available_cars,
+            icon: 'bi-check-circle',
+            color: 'success'
+        },
+        {
+            title: 'Активных аренд',
+            value: data.rental_stats.active_rentals,
+            icon: 'bi-file-text',
+            color: 'info'
+        },
+        {
+            title: 'Просрочек',
+            value: data.rental_stats.overdue_rentals,
+            icon: 'bi-exclamation-triangle',
+            color: 'warning'
+        },
+        {
+            title: 'Доход (месяц)',
+            value: formatCurrency(data.financial_current.income),
+            change: data.financial_current.income_change,
+            icon: 'bi-cash',
+            color: 'success'
+        },
+        {
+            title: 'Прибыль (месяц)',
+            value: formatCurrency(data.financial_current.profit),
+            change: data.financial_current.profit_change,
+            icon: 'bi-graph-up',
+            color: data.financial_current.profit >= 0 ? 'success' : 'danger'
+        }
+    ];
+    
+    statsContainer.innerHTML = stats.map(stat => {
+        const changeHtml = stat.change !== undefined ? 
+            `<small class="text-${stat.change >= 0 ? 'success' : 'danger'}">
+                <i class="bi bi-${stat.change >= 0 ? 'arrow-up' : 'arrow-down'}"></i>
+                ${Math.abs(stat.change).toFixed(1)}%
+            </small>` : '';
+            
+        return `
+            <div class="col-md-2 col-sm-6 mb-3">
+                <div class="card border-${stat.color} h-100">
+                    <div class="card-body text-center">
+                        <div class="text-${stat.color} mb-2">
+                            <i class="${stat.icon} fs-2"></i>
+                        </div>
+                        <h5 class="card-title">${stat.value}</h5>
+                        <p class="card-text small text-muted">${stat.title}</p>
+                        ${changeHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderFinancialChart(data) {
+    const ctx = document.getElementById('financialChart').getContext('2d');
+    
+    if (financialChart) {
+        financialChart.destroy();
+    }
+    
+    financialChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(item => item.month),
+            datasets: [
+                {
+                    label: 'Доходы',
+                    data: data.map(item => item.income),
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    tension: 0.1
+                },
+                {
+                    label: 'Расходы',
+                    data: data.map(item => item.expenses),
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.1
+                },
+                {
+                    label: 'Прибыль',
+                    data: data.map(item => item.profit),
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    tension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return formatCurrency(value);
+                        }
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + formatCurrency(context.raw);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderCarsIncomeChart(data) {
+    const ctx = document.getElementById('carsIncomeChart').getContext('2d');
+    
+    if (carsIncomeChart) {
+        carsIncomeChart.destroy();
+    }
+    
+    if (data.length === 0) {
+        ctx.canvas.parentElement.innerHTML = '<p class="text-muted text-center">Нет данных</p>';
+        return;
+    }
+    
+    carsIncomeChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(item => item.name),
+            datasets: [{
+                data: data.map(item => item.value),
+                backgroundColor: [
+                    '#FF6384',
+                    '#36A2EB',
+                    '#FFCE56',
+                    '#4BC0C0',
+                    '#9966FF',
+                    '#FF9F40',
+                    '#FF6384',
+                    '#C9CBCF',
+                    '#4BC0C0',
+                    '#FF6384'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.label + ': ' + formatCurrency(context.raw);
+                        }
+                    }
+                },
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 12,
+                        font: {
+                            size: 11
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderTopCars(cars) {
+    const container = document.getElementById('top-cars-list');
+    
+    if (!cars || cars.length === 0) {
+        container.innerHTML = '<p class="text-muted">Нет данных о прибыли</p>';
+        return;
+    }
+    
+    container.innerHTML = cars.slice(0, 5).map((car, index) => {
+        const profitColor = car.net_profit > 0 ? 'success' : 'danger';
+        return `
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 ${index < cars.length - 1 ? 'border-bottom' : ''}">
+                <div>
+                    <div class="fw-bold">${index + 1}. ${car.car_info}</div>
+                    <small class="text-muted">ROI: ${car.roi.toFixed(1)}%</small>
+                </div>
+                <div class="text-end">
+                    <div class="text-${profitColor} fw-bold">${formatCurrency(car.net_profit)}</div>
+                    <small class="text-muted">${formatCurrency(car.total_income)} доход</small>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderNotifications(data) {
+    const container = document.getElementById('notifications');
+    const notifications = [];
+    
+    // Overdue rentals notification
+    if (data.rental_stats.overdue_rentals > 0) {
+        notifications.push({
+            type: 'warning',
+            icon: 'bi-exclamation-triangle',
+            title: 'Просроченные аренды',
+            message: `${data.rental_stats.overdue_rentals} договоров просрочено`,
+            action: () => window.location.href = '/rental?overdue=true'
+        });
+    }
+    
+    // Low availability notification
+    const availabilityRate = (data.fleet_stats.available_cars / data.fleet_stats.total_cars) * 100;
+    if (availabilityRate < 20 && data.fleet_stats.total_cars > 0) {
+        notifications.push({
+            type: 'info',
+            icon: 'bi-info-circle',
+            title: 'Низкая доступность',
+            message: `Только ${data.fleet_stats.available_cars} из ${data.fleet_stats.total_cars} машин доступно`,
+            action: () => window.location.href = '/cars'
+        });
+    }
+    
+    // Profit trend notification
+    if (data.financial_current.profit_change < -20) {
+        notifications.push({
+            type: 'danger',
+            icon: 'bi-graph-down',
+            title: 'Снижение прибыли',
+            message: `Прибыль снизилась на ${Math.abs(data.financial_current.profit_change).toFixed(1)}%`,
+            action: () => window.location.href = '/reports'
+        });
+    }
+    
+    if (notifications.length === 0) {
+        container.innerHTML = '<p class="text-muted">Нет уведомлений</p>';
+        return;
+    }
+    
+    container.innerHTML = notifications.map(notif => `
+        <div class="alert alert-${notif.type} alert-dismissible fade show" role="alert">
+            <i class="${notif.icon}"></i>
+            <strong>${notif.title}</strong>
+            <br>
+            ${notif.message}
+            ${notif.action ? '<button type="button" class="btn btn-sm btn-outline-' + notif.type + ' ms-2" onclick="(' + notif.action.toString() + ')()">Перейти</button>' : ''}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `).join('');
+}
+</script>
+{% endblock %}
