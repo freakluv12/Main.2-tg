@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Панель управления - Rental CRM{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3 mb-0">
+            <i class="bi bi-speedometer2"></i>
+            Панель управления
+        </h1>
+        <p class="text-muted">Обзор системы автопроката</p>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="row mb-4" id="quick-stats">
+    <!-- Will be populated by JavaScript -->
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-graph-up"></i>
+                    Финансовая динамика
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="financialChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card h-
