@@ -10,6 +10,14 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     libjpeg-dev \
     libpng-dev \
+    libtiff5-dev \
+    libopenjp2-7-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libwebp-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libxcb1-dev \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -27,5 +35,5 @@ RUN mkdir -p uploads
 # Открываем порт 8000
 EXPOSE 8000
 
-# Запускаем приложение с uvicorn (можно переопределить в docker-compose)
+# Запускаем приложение с uvicorn
 CMD ["uvicorn", "web.main:app", "--host", "0.0.0.0", "--port", "8000"]
