@@ -1,39 +1,15 @@
-FROM python:3.9-slim
-
-# Устанавливаем рабочую директорию
-WORKDIR /app
-
-# Устанавливаем системные зависимости для Pillow и других библиотек
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    zlib1g-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libtiff5-dev \
-    libopenjp2-7-dev \
-    libfreetype6-dev \
-    liblcms2-dev \
-    libwebp-dev \
-    libharfbuzz-dev \
-    libfribidi-dev \
-    libxcb1-dev \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Копируем requirements.txt и устанавливаем Python зависимости
-COPY requirements.txt .
-RUN pip install --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Копируем остальной код приложения
-COPY . .
-
-# Создаём директорию для загрузок
-RUN mkdir -p uploads
-
-# Открываем порт 8000
-EXPOSE 8000
-
-# Запускаем приложение с uvicorn
-CMD ["uvicorn", "web.main:app", "--host", "0.0.0.0", "--port", "8000"]
+fastapi==0.104.1
+uvicorn==0.24.0
+aiogram==3.13.1
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.13.0
+python-multipart==0.0.6
+jinja2==3.1.2
+python-dotenv==1.0.0
+aiofiles==23.2.1
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+plotly==5.17.0
+Pillow==8.4.0
+aiohttp==3.9.1
