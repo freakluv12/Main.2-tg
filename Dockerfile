@@ -1,26 +1,31 @@
-FROM python:3.12
+FROM python:3.9-slim
 
-# Set working directory
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Install system dependencies
+# Устанавливаем системные зависимости для Pillow и других библиотек
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    zlib1g-dev \
+    libjpeg-dev \
+    libpng-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Копируем requirements.txt и устанавливаем Python зависимости
 COPY requirements.txt .
+RUN pip install --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Копируем остальной код приложения
 COPY . .
 
-# Create uploads directory
+# Создаём директорию для загрузок
 RUN mkdir -p uploads
 
-# Expose port
+# Открываем порт 8000
 EXPOSE 8000
 
-# Default command (can be overridden in docker-compose)
+# Запускаем приложение с uvicorn (можно переопределить в docker-compose)
 CMD ["uvicorn", "web.main:app", "--host", "0.0.0.0", "--port", "8000"]
