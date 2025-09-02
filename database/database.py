@@ -3,10 +3,12 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 import config
 
-engine = create_engine(config.DATABASE_URL)
+# Создаем движок базы данных
+engine = create_engine(config.DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+# Используем Base из models.py
+from .models import Base
 
 
 def get_db():
@@ -18,10 +20,20 @@ def get_db():
         db.close()
 
 
+def get_sync_db():
+    """Synchronous database session for bot"""
+    db = SessionLocal()
+    try:
+        return db
+    finally:
+        pass  # Caller должен сам закрыть сессию
+
+
+# Для совместимости со старым кодом
 async def get_async_db():
-    """Async database session for bot"""
+    """Async-compatible database session for bot"""
     db = SessionLocal()
     try:
         yield db
     finally:
-        await db.close()
+        db.close()
