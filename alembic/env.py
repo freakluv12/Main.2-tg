@@ -7,7 +7,23 @@ from sqlalchemy import pool
 from alembic import context
 
 # Импортируйте ваши модели здесь
-from database import Base
+try:
+    # Правильный импорт из вашей структуры проекта
+    from database.models import Base
+    # Также импортируем все модели для autogenerate
+    from database.models import Car, Renter, Rental, Payment, Fine, Expense
+    print("✅ Successfully imported models from database.models")
+except ImportError as e:
+    print(f"❌ Could not import models: {e}")
+    try:
+        # Fallback на database.database если есть
+        from database.database import Base
+        print("⚠️ Using Base from database.database")
+    except ImportError:
+        # Последний fallback
+        from sqlalchemy.ext.declarative import declarative_base
+        Base = declarative_base()
+        print("⚠️ Using fallback declarative_base - migrations may not work correctly")
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
