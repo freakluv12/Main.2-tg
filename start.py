@@ -16,24 +16,76 @@ import config
 
 
 def run_migrations():
-    """Run database migrations"""
+    """Run database migrations with improved error handling"""
     print("🔄 Running database migrations...")
+    
     try:
-        result = subprocess.run(["alembic", "upgrade", "head"], 
-                              capture_output=True, text=True)
-        print("Alembic stdout:", result.stdout)  # Для отладки
-        print("Alembic stderr:", result.stderr)  # Для отладки
+        # Проверяем, существует ли папка alembic/versions
+        versions_dir = Path("alembic/versions")
+        if not versions_dir.exists():
+            print("📁 Creating alembic versions directory...")
+            versions_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Попытка обновления до последней миграции
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"], 
+            capture_output=True, 
+            text=True,
+            cwd='.'
+        )
+        
+        # Всегда выводим результаты для отладки
+        if result.stdout:
+            print(f"Alembic stdout: {result.stdout}")
+        if result.stderr:
+            print(f"Alembic stderr: {result.stderr}")
+        
         if result.returncode == 0:
             print("✅ Database migrations completed successfully")
+            return True
         else:
-            print("❌ Database migration failed:")
-            print(result.stderr)
-            return False
-    except Exception as e:
-        print(f"❌ Error running migrations: {e}")
+            # Если миграция не удалась, пробуем создать первую миграцию
+            print("⚠️ Migration failed, checking if initial migration is needed...")
+            
+            # Проверяем, содержится ли ошибка о том, что нет script_location
+            if "No 'script_location'" in result.stderr:
+                print("❌ Alembic configuration error. Please ensure alembic.ini exists.")
+                return False
+            
+            # Пробуем создать первую миграцию
+            print("🔄 Attempting to create initial migration...")
+            init_result = subprocess.run(
+                ["alembic", "revision", "--autogenerate", "-m", "Initial migration"],
+                capture_output=True,
+                text=True,
+                cwd='.'
+            )
+            
+            if init_result.returncode == 0:
+                print("✅ Initial migration created")
+                # Применяем созданную миграцию
+                apply_result = subprocess.run(
+                    ["alembic", "upgrade", "head"],
+                    capture_output=True,
+                    text=True,
+                    cwd='.'
+                )
+                if apply_result.returncode == 0:
+                    print("✅ Initial migration applied successfully")
+                    return True
+                else:
+                    print(f"❌ Failed to apply initial migration: {apply_result.stderr}")
+                    return False
+            else:
+                print(f"❌ Failed to create initial migration: {init_result.stderr}")
+                return False
+                
+    except FileNotFoundError:
+        print("❌ Alembic not found. Make sure it's installed in requirements.txt")
         return False
-
-    return True
+    except Exception as e:
+        print(f"❌ Unexpected error during migration: {e}")
+        return False
 
 
 def start_web_server():
@@ -43,10 +95,13 @@ def start_web_server():
         import uvicorn
         from web.main import app
         
+        # Получаем порт из переменной окружения (для Render)
+        port = int(os.getenv("PORT", 8000))
+        
         uvicorn.run(
             app, 
             host="0.0.0.0", 
-            port=8000,
+            port=port,
             log_level="info"
         )
     except Exception as e:
@@ -79,6 +134,7 @@ def check_environment():
         print("\nPlease set these variables in your .env file or environment")
         return False
     
+    print("✅ All required environment variables are set")
     return True
 
 
@@ -87,6 +143,32 @@ def create_uploads_dir():
     uploads_dir = Path("uploads")
     uploads_dir.mkdir(exist_ok=True)
     print(f"📁 Uploads directory: {uploads_dir.absolute()}")
+
+
+def check_alembic_config():
+    """Check if Alembic configuration files exist"""
+    alembic_ini = Path("alembic.ini")
+    alembic_dir = Path("alembic")
+    
+    missing_files = []
+    
+    if not alembic_ini.exists():
+        missing_files.append("alembic.ini")
+    
+    if not alembic_dir.exists():
+        missing_files.append("alembic/ directory")
+    elif not (alembic_dir / "env.py").exists():
+        missing_files.append("alembic/env.py")
+    
+    if missing_files:
+        print("⚠️ Missing Alembic configuration files:")
+        for file in missing_files:
+            print(f"   - {file}")
+        print("\nAlembic migrations may fail. Consider running 'alembic init alembic' first.")
+        return False
+    
+    print("✅ Alembic configuration files found")
+    return True
 
 
 def signal_handler(signum, frame):
@@ -111,8 +193,19 @@ def main():
     # Create necessary directories
     create_uploads_dir()
     
+    # Check Alembic configuration
+    alembic_ok = check_alembic_config()
+    if not alembic_ok:
+        print("⚠️ Proceeding anyway, but migrations may fail...")
+    
     # Run migrations
     if not run_migrations():
+        print("❌ Database migration failed:")
+        print("This might be because:")
+        print("1. alembic.ini is missing or misconfigured")
+        print("2. Database connection failed")
+        print("3. Migration files are corrupted")
+        print("4. First-time setup needs manual migration creation")
         sys.exit(1)
     
     print("🎯 All checks passed, starting services...")
