@@ -21,6 +21,8 @@ def run_migrations():
     try:
         result = subprocess.run(["alembic", "upgrade", "head"], 
                               capture_output=True, text=True)
+        print("Alembic stdout:", result.stdout)  # Для отладки
+        print("Alembic stderr:", result.stderr)  # Для отладки
         if result.returncode == 0:
             print("✅ Database migrations completed successfully")
         else:
@@ -30,7 +32,7 @@ def run_migrations():
     except Exception as e:
         print(f"❌ Error running migrations: {e}")
         return False
-    
+
     return True
 
 
